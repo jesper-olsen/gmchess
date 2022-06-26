@@ -413,8 +413,7 @@ class Game:
         self.ktable=[collections.Counter() for i in range(self.MAX_DEPTH)]
 
     def turn(self):
-        if (len(self.log)+1)%2==WHITE: return WHITE
-        return BLACK
+        return (len(self.log)+1)%2 
 
     def moves(self, colour=None):
         if colour==None: colour=(len(self.log)+1)%2
