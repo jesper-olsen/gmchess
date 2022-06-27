@@ -390,17 +390,9 @@ class Game:
         self.board=list('R......rN.....pnB.....pbKP....pkQ.....pqBP....pbNP.....nRP.....r')
         self.board=list('R......rN......nB......bK......kQ......qB......bN......nR......r') # no pawns
         self.board=list('RP......NP......BP......KP.....kQP......BP......NP......RP......') # black only king
-        self.board=list('R.......N.......B.......K......kQ.......B.......N.......R.......') # black only king, no pawns
-        self.board=list('R.......................K......kQ.......................R.......') # black only king, white K,Q,R
         self.board=list('RP....prNP....pnBP....pbKP....pkQP....pqBP....pbNP....pnRP....pr') # root 
-
-        #Test pos
-        #board=list('.'*64)
-        #board[23]='k'
-        #board[6]='R'
-        #board[56]='R'
-        #board[32]='Q'
-        #board[24]='K'
+        self.board=list('R.......................K......kQ.......................R.......') # black only king, white K,Q,R
+        self.board=list('R.......N.......B.......K......kQ.......B.......N.......R.......') # black only king, no pawns
 
         self.can_castle=[{WHITE: {'short': True, 'long': True}, BLACK:{'short': True, 'long': True}}]
         self.MAX_DEPTH=50
@@ -535,17 +527,40 @@ def score_moves(game,depth=1):
        moves=[m for (s,m) in l]
    return moves
 
-def quiescence_fab(game, depth, ply, alpha, beta):
-    best=-INFINITE+ply
-    moves=game.legal_moves()
+def reply_fab(game, depth, ply, alpha, beta):
     lt=game.log[-1]['to'] 
-    if game.board[lt].lower()!='p' or (lt%8 != 6 or lt%8!=1): # quiescent
-        moves=[m for m in moves if 'kill' in m]
-        moves=[m for m in moves if m['to']==lt]
+    moves=game.legal_moves()
+    moves=[m for m in moves if 'kill' in m]
+    moves=[m for m in moves if m['to']==lt]
     if moves==[]: return game.eval()
+
+    best=-INFINITE+ply
     for m in moves:
         game.update(m)
-        score=-quiescence_fab(game, depth-1, ply+1, -beta, -max(alpha,best))
+        score=-reply_fab(game, depth-1,ply+1,-beta, -max(alpha,best))
+        if score>best:
+            best=score
+            if best>=beta:
+                game.backdate()
+                return best
+        game.backdate()
+    return best
+    
+def quiescence_fab(game, depth, ply, alpha, beta):
+    moves=game.legal_moves()
+    lt=game.log[-1]['to'] 
+    quiescent=game.board[lt].lower()!='p' or (lt%8 != 6 or lt%8!=1)
+    if quiescent:
+        moves=[m for m in moves if 'kill' in m]
+    if moves==[]: return game.eval()
+
+    best=-INFINITE+ply
+    for m in moves:
+        game.update(m)
+        if quiescent:
+            score=-reply_fab(game, depth-1, ply+1, -beta, -max(alpha,best))
+        else:
+            score=-quiescence_fab(game, depth-1, ply+1, -beta, -max(alpha,best))
         if score>best:
             best=score
             if best>=beta:
@@ -636,7 +651,7 @@ def autoplay():
             print("Draw by repetition")
             game_over=True
             sys.exit(1)
-        moves=score_moves(game,2)
+        moves=score_moves(game,4)
         if moves==[]:
             if game.in_check(): 
                 print(f"{label[game.turn()]} is check mate")
