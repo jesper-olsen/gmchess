@@ -390,9 +390,9 @@ class Game:
         self.board=list('R......rN.....pnB.....pbKP....pkQ.....pqBP....pbNP.....nRP.....r')
         self.board=list('R......rN......nB......bK......kQ......qB......bN......nR......r') # no pawns
         self.board=list('RP......NP......BP......KP.....kQP......BP......NP......RP......') # black only king
-        self.board=list('RP....prNP....pnBP....pbKP....pkQP....pqBP....pbNP....pnRP....pr') # root 
         self.board=list('R.......................K......kQ.......................R.......') # black only king, white K,Q,R
         self.board=list('R.......N.......B.......K......kQ.......B.......N.......R.......') # black only king, no pawns
+        self.board=list('RP....prNP....pnBP....pbKP....pkQP....pqBP....pbNP....pnRP....pr') # root 
 
         self.can_castle=[{WHITE: {'short': True, 'long': True}, BLACK:{'short': True, 'long': True}}]
         self.MAX_DEPTH=50
@@ -403,6 +403,8 @@ class Game:
         self.rep={("".join(self.board),self.turn()): 1}
         self.ttable={} #transposition table
         self.ktable=[collections.Counter() for i in range(self.MAX_DEPTH)]
+        self.n_searched=0
+        self.max_searched=100000
 
     def turn(self):
         return (len(self.log)+1)%2 
@@ -410,6 +412,7 @@ class Game:
     def moves(self, colour=None):
         if colour==None: colour=(len(self.log)+1)%2
         for i,p in ((i,p) for (i,p) in enumerate(self.board) if p2colour[p]==colour):
+            self.n_searched+=1  
             yield from p2moves[p.lower()](self,i)    
 
     def legal_moves(self):
@@ -473,13 +476,15 @@ class Game:
 
     def store(self, depth,score,alpha,beta,move):
         key="".join(self.board),self.turn()
-        if key not in self.ttable or self.ttable[key]['depth']<=depth:
+
+        if key not in self.ttable or self.ttable[key]['depth']<=depth: #update transposition table
             self.ttable[key]={'depth': depth, 'score': score, 'move': move, 'bound':'EXACT'}
             if score<=alpha:
                 self.ttable[key]['bound']='UPPER'
             if score>=beta:
                 self.ttable[key]['bound']='LOWER'
-        self.ktable[depth][(move['from'],move['to'])]+=1
+
+        self.ktable[depth][(move['from'],move['to'])]+=1 #update kill table
 
     def eval(self):
         v=self.material + eval_pawn_structure(self.board) #+ game.mobility[WHITE]-game.mobility[BLACK]
@@ -488,13 +493,17 @@ class Game:
     def in_check(self, colour=None):
         if colour==None:
             colour=BLACK if self.turn()==WHITE else WHITE
+        else:
+            colour=WHITE if self.turn()==WHITE else BLACK
         return [m for m in self.moves(colour) if 'kill' in m and m['kill'][0].lower()=='k']!=[]
 
-def score_moves(game,depth=1):
+def score_moves(game,depth=1,max_searched=100000):
    t0=time.time()
    moves=game.legal_moves()
    if moves==[]: return []
+   game.n_searched=0
    for depth in range(1, depth+1):
+       if depth>1 and game.n_searched>max_searched: break
        alpha=-INFINITE
        best =-INFINITE # remember 1st move regardless of value
        beta = INFINITE
@@ -529,7 +538,8 @@ def score_moves(game,depth=1):
 
 def reply_fab(game, depth, ply, alpha, beta):
     lt=game.log[-1]['to'] 
-    moves=game.legal_moves()
+    #moves=game.legal_moves()
+    moves=game.moves()
     moves=[m for m in moves if 'kill' in m]
     moves=[m for m in moves if m['to']==lt]
     if moves==[]: return game.eval()
@@ -537,17 +547,19 @@ def reply_fab(game, depth, ply, alpha, beta):
     best=-INFINITE+ply
     for m in moves:
         game.update(m)
-        score=-reply_fab(game, depth-1,ply+1,-beta, -max(alpha,best))
-        if score>best:
-            best=score
-            if best>=beta:
-                game.backdate()
-                return best
+        if not game.in_check('p'):
+            score=-reply_fab(game, depth-1,ply+1,-beta, -max(alpha,best))
+            if score>best:
+                best=score
+                if best>=beta:
+                    game.backdate()
+                    return best
         game.backdate()
     return best
     
 def quiescence_fab(game, depth, ply, alpha, beta):
-    moves=game.legal_moves()
+    #moves=game.legal_moves()
+    moves=list(game.moves())
     lt=game.log[-1]['to'] 
     quiescent=game.board[lt].lower()!='p' or (lt%8 != 6 or lt%8!=1)
     if quiescent:
@@ -557,15 +569,16 @@ def quiescence_fab(game, depth, ply, alpha, beta):
     best=-INFINITE+ply
     for m in moves:
         game.update(m)
-        if quiescent:
-            score=-reply_fab(game, depth-1, ply+1, -beta, -max(alpha,best))
-        else:
-            score=-quiescence_fab(game, depth-1, ply+1, -beta, -max(alpha,best))
-        if score>best:
-            best=score
-            if best>=beta:
-                game.backdate()
-                return best
+        if not game.in_check('p'): #legal move
+            if quiescent:
+                score=-reply_fab(game, depth-1, ply+1, -beta, -max(alpha,best))
+            else:
+                score=-quiescence_fab(game, depth-1, ply+1, -beta, -max(alpha,best))
+            if score>best:
+                best=score
+                if best>=beta:
+                    game.backdate()
+                    return best
         game.backdate()
     return best
     
@@ -575,6 +588,8 @@ def pvs(game, depth, ply, alpha, beta):
         return 0
     game.rep[key]+=1
 
+    if game.in_check(): depth+=1
+
     d=game.retrieve(key)
     if d!=None:
         if d['depth']>=depth:
@@ -583,10 +598,14 @@ def pvs(game, depth, ply, alpha, beta):
             elif d['bound']=='UPPER': beta=min(beta,d['score'])
             if alpha>=beta: return d['score']
 
+    if depth<=0: 
+        game.rep[key]-=1
+        return quiescence_fab(game, depth, ply+1, alpha, beta)
+
     bscore=-INFINITE+ply
     bmove=None
-    moves=game.legal_moves()
-
+    #moves=game.legal_moves()
+    moves=list(game.moves())
 
     # move killer moves to head of list
     for i in [i for (k,v) in game.ktable[depth].most_common(1) for (i,m) in enumerate(moves) if i!=0 and (m['from'],m['to'])==k][::-1]:
@@ -596,38 +615,32 @@ def pvs(game, depth, ply, alpha, beta):
         i=moves.index(d['move'])
         if i!=0: moves=[moves.pop(i)] + moves
 
-    #moves=sorted([m for m in game.moves()], key=lambda x: x['val'], reverse=game.turn()==WHITE)
-    if moves==[]:
-        if game.in_check(): 
-            game.rep[key]-=1
-            return bscore
-        return 0
-
-    if depth<=0: 
-        game.rep[key]-=1
-        return quiescence_fab(game, depth, ply+1, alpha, beta)
-
     for i,m in enumerate(moves):
         game.update(m)
-        if i==0: 
-            bscore=-pvs(game,depth-1,ply+1,-beta,-max(bscore,alpha))
-            bmove=m
-        else:
-            alpha=max(bscore,alpha)
-            score=-pvs(game,depth-1,ply+1, -alpha-1,-alpha)
-            if score>bscore:
-                if score>alpha and score<beta and depth>2:
-                    score=-pvs(game,depth-1,ply+1,-beta,-score)
-                bscore=score
+        if not game.in_check('o'): #legal move
+            if i==0: 
+                bscore=-pvs(game,depth-1,ply+1,-beta,-max(bscore,alpha))
                 bmove=m
+            else:
+                alpha=max(bscore,alpha)
+                score=-pvs(game,depth-1,ply+1, -alpha-1,-alpha)
+                if score>bscore:
+                    if score>alpha and score<beta and depth>2:
+                        score=-pvs(game,depth-1,ply+1,-beta,-score)
+                    bscore=score
+                    bmove=m
         game.backdate()
-        if bscore>=beta: 
+        if bmove!=None and bscore>=beta: 
             game.store(depth,bscore,alpha,beta,bmove) 
             game.rep[key]-=1
             return bscore
 
     game.rep[key]-=1
-    game.store(depth,bscore,alpha,beta,bmove) 
+    if bmove!=None:
+        game.store(depth,bscore,alpha,beta,bmove) 
+    elif not game.in_check():
+        return 0
+
     return bscore
 
 def print_moves(moves):
@@ -650,19 +663,21 @@ def autoplay():
         if game.rep["".join(game.board),game.turn()]>=3:
             print("Draw by repetition")
             game_over=True
-            sys.exit(1)
-        moves=score_moves(game,4)
+        else:
+            moves=score_moves(game,25,100000)
         if moves==[]:
             if game.in_check(): 
                 print(f"{label[game.turn()]} is check mate")
             else: 
                 print("Draw")
             game_over=True
-        else:
-            s=f"{label[game.turn()]}: {m2str(moves[0])}"
+        else: # print move
+            s=f"{len(game.log)} {label[game.turn()]}: {m2str(moves[0])}"
             game.update(moves[0])
             game.display()
-            print(s+f" {label2[game.in_check()]}")
+            s+=f" {label2[game.in_check()]}"
+            s+=f"searched {game.n_searched}"
+            print(s)
     print("Time:",time.time()-t0)
 
 if __name__=="__main__":
