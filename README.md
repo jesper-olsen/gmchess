@@ -3,6 +3,7 @@
 Golden Monkey Chess - pure python implementation in one file.
 Run as main or call autoplay for self play
 
+```
  % python3.9 gmchess.py
 
 8 rnbqkbnr
@@ -48,3 +49,4 @@ Run as main or call autoplay for self play
 1 RNBQKB.R
   ABCDEFGH
 2. Nf6
+```
