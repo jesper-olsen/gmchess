@@ -11,6 +11,11 @@ import time
 import collections
 import locale
 
+pieces="RNBKQP"
+WHITE=1
+BLACK=0
+INFINITE=10000
+p2colour={p:WHITE for p in pieces} | {p.lower():BLACK for p in pieces} | {'.':2}
 
 pval={'P':( 100, 100, 101, 102, 104, 106, 108, 900,
             100, 100, 102, 104, 106, 109, 112, 900,
@@ -142,18 +147,9 @@ def score_pawn_structure(board):
     #passed pawns
     passed=sum([2*q%8*q%8 for q in [i for i,c in enumerate(board) if c=='P'] if freeP(q)])  
     yield passed
-    #print("Passed P",passed)
     passed=sum([-2*(7-q%8)*(7-q%8) for q in [i for i,c in enumerate(board) if c=='p'] if freep(q)])  
-    #print("Passed p",passed)
     yield passed
 
-
-
-pieces="RNBKQP"
-WHITE=1
-BLACK=0
-INFINITE=10000
-p2colour={p:WHITE for p in pieces} | {p.lower():BLACK for p in pieces} | {'.':2}
 
 def i2str(i):
     """Translate integer coordinates to chess square"""
@@ -191,16 +187,6 @@ def m2str(d):
 #Build a 'ray-map' - squares that rook,bishop,queen can glide to on an empty board
 #+ map for king, Knight
 
-def print_board(board):
-    print()
-    for y in range(7,-1,-1):
-        print(f"{y+1} ", end="")
-        for x in range(8):
-            print(board[(7-x)*8+y],end="")
-        print()
-    print("  ABCDEFGH")
-
-
 r={}
 for k in ["w","e","n","s","nw","ne","sw","se","k","knight"]:
     r[k]={}
@@ -230,15 +216,6 @@ for i in range(64):
 for x in r:
     for i in r[x]:
         r[x][i]=list(r[x][i])
-
-def to_string(self):
-    board=list("."*64)
-    for (tp,i,is_white) in self.get_pieces():
-        if is_white==1:
-            board[i]=tp.upper()
-        else:
-            board[i]=tp.lower()
-    return "".join(board)
 
 def ray_moves(rays, game, frm):
     board=game.board
@@ -473,7 +450,13 @@ class Game:
         self.material-=d['val']
 
     def display(self):
-        print_board(self.board)
+        print()
+        for y in range(7,-1,-1):
+            print(f"{y+1} ", end="")
+            for x in range(8):
+                print(self.board[(7-x)*8+y],end="")
+            print()
+        print("  ABCDEFGH")
 
     def retrieve(self,key):
         if key in self.ttable:
@@ -652,10 +635,6 @@ def pvs(game, depth, ply, alpha, beta):
         return 0
 
     return bscore
-
-def print_moves(moves):
-    for i,m in enumerate(moves):
-        print(i, m, m2str(m))
 
 def autoplay(verbose=False):
     game=Game()
