@@ -2,9 +2,11 @@
 #  Copyright (c) 2022 Jesper Olsen
 #  License: MIT, see License.txt
 #
+#  Golden Monkey Chess - pure python implementation in one file.
+#  Run as main or call autoplay() for self play...
+#
 
 import sys
-from pprint import pprint
 import time
 import collections
 import locale
@@ -501,10 +503,16 @@ class Game:
             colour=WHITE if self.turn()==WHITE else BLACK
         return [m for m in self.moves(colour) if 'kill' in m and m['kill'][0].lower()=='k']!=[]
 
-    def score_moves(self,depth=1,max_searched=100000):
+    def score_moves(self,moves,depth=1,max_searched=100000):
        t0=time.time()
-       #moves=game.legal_moves()
-       moves=self.labeled_moves()
+       self.ttable={} #transposition table
+       self.ktable=[collections.Counter() for i in range(self.MAX_DEPTH)]
+       self.rep={key:self.rep[key] for key in self.rep if self.rep[key]>0}
+       key="".join(self.board),self.turn()
+       self.rep.setdefault(key,0)
+       if moves==None:
+           #moves=game.legal_moves()
+           moves=self.labeled_moves()
        if moves==[]: return []
        self.n_searched=0
        for depth in range(1, depth+1):
@@ -649,40 +657,37 @@ def print_moves(moves):
     for i,m in enumerate(moves):
         print(i, m, m2str(m))
 
-def autoplay():
-    label={WHITE:"White", BLACK:"Black"}
+def autoplay(verbose=False):
     game=Game()
     t0=time.time()
-    game_over=False
-    tot=0
-    while not game_over:
-        game.ttable={} #transposition table
-        game.ktable=[collections.Counter() for i in range(game.MAX_DEPTH)]
-        game.rep={key:game.rep[key] for key in game.rep if game.rep[key]>0}
-        key="".join(game.board),game.turn()
-        game.rep.setdefault(key,0)
+    tot=0 # statistics - total # of positions explored
+    moves=game.labeled_moves()
+    while True:
         if game.rep["".join(game.board),game.turn()]>=3:
-            print("Draw by repetition")
-            game_over=True
-        else:
-            moves=game.score_moves(25,100000)
-            tot+=game.n_searched
+            print("1/2-1/2 Draw by repetition")
+            break
+        moves=game.score_moves(moves,25,100000)
+        tot+=game.n_searched
+
         if moves==[]:
-            if game.in_check(): 
-                print(f"{label[game.turn()]} is check mate")
-            else: 
-                print("Draw")
-            game_over=True
-        else: # print move
-            s=f"{len(game.log)//2+1}. {label[game.turn()]}: "
-            m=moves[0]
-            if 'label' in m: s+=f"{m['label']}"
-            else: s+=f"{m2str(m)}"
-            game.update(m)
-            game.display()
-            s+="+ " if game.in_check() else " "
-            s+=f"; Value: {m['score']}, Searched {game.n_searched:n}; {tot/(time.time()-t0):n} positions/sec; depth: {m['depth']}"
-            print(s)
+            s="1-0" if game.turn()==BLACK else "0-1"
+            print(s) if game.in_check() else print("1/2-1/2 Draw")
+            break
+
+        s=f"{len(game.log)//2+1}. "
+        m=moves[0]
+        s+=f"{m['label']}" if 'label' in m else f"{m2str(moves[0])}"
+        game.update(m)
+        game.display()
+        moves2=game.labeled_moves()
+        if game.in_check():
+            if moves2==[]:
+                s+="#"
+            else:
+                s+="+"
+        if verbose: s+=f" ; Value: {m['score']}, Searched {game.n_searched:n}; {tot/(time.time()-t0):n} positions/sec; depth: {m['depth']}"
+        print(s)
+        moves=moves2
     print("Time:",time.time()-t0)
 
 if __name__=="__main__":
