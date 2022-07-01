@@ -5,6 +5,9 @@
 #  Golden Monkey Chess - pure python implementation in one file.
 #  Run as main or call autoplay() for self play...
 #
+#  TODO - replace ttable, ktable, rep with more efficient maps
+#       - add mobility to scoring
+#       - check 50 move rule
 
 import sys
 import time
@@ -16,6 +19,18 @@ WHITE=1
 BLACK=0
 INFINITE=10000
 p2colour={p:WHITE for p in pieces} | {p.lower():BLACK for p in pieces} | {'.':2}
+
+#positional piece values
+k1val=( 24,  24,  12,  6,  6,  12,  24,  24, 
+        24,  12,  6,   0,  0,  6,   12,  24, 
+        12,  6,   0,  -6, -6,  0,   6,  12, 
+         6,   0,  -6, -12, -12, -6,  0,  6, 
+         6,   0,  -6, -12, -12, -6,  0,  6, 
+        12,  6,   0,  -6, -6,  0,   6,  12, 
+        24,  12,  6,   0,  0,  6,   12,  24, 
+        24,  24,  12,  6,  6,  12,  24,  24)
+k2val=tuple(-x for x in k1val)
+
 
 pval={'P':( 100, 100, 101, 102, 104, 106, 108, 900,
             100, 100, 102, 104, 106, 109, 112, 900,
@@ -33,22 +48,8 @@ pval={'P':( 100, 100, 101, 102, 104, 106, 108, 900,
            -900, -120, -116, -112, -108, -104, -100, -100,
            -900, -112, -108, -106, -104, -102, -100, -100,
            -900, -108, -106, -104, -102, -101, -100, -100),
-      'R':( 500, 500, 500, 500, 500, 500, 522, 500,
-            500, 500, 500, 500, 500, 500, 522, 500,
-            500, 500, 500, 500, 500, 500, 522, 500,
-            500, 500, 500, 500, 500, 500, 522, 500,
-            500, 500, 500, 500, 500, 500, 522, 500,
-            500, 500, 500, 500, 500, 500, 522, 500,
-            500, 500, 500, 500, 500, 500, 522, 500,
-            500, 500, 500, 500, 500, 500, 522, 500),
-      'r':(-500, -522, -500, -500, -500, -500, -500, -500,
-           -500, -522, -500, -500, -500, -500, -500, -500,
-           -500, -522, -500, -500, -500, -500, -500, -500,
-           -500, -522, -500, -500, -500, -500, -500, -500,
-           -500, -522, -500, -500, -500, -500, -500, -500,
-           -500, -522, -500, -500, -500, -500, -500, -500,
-           -500, -522, -500, -500, -500, -500, -500, -500,
-           -500, -522, -500, -500, -500, -500, -500, -500),
+      'R':tuple(([500]*6+[522,500])*8),
+      'r':tuple(([-500,-522]+[-500]*6)*8),
       'N':( 315, 315, 315, 315, 315, 315, 315, 315,
             315, 320, 320, 320, 320, 320, 320, 315,
             315, 320, 325, 325, 330, 330, 320, 315,
@@ -65,40 +66,12 @@ pval={'P':( 100, 100, 101, 102, 104, 106, 108, 900,
            -315, -320, -330, -330, -325, -325, -320, -315,
            -315, -320, -320, -320, -320, -320, -320, -315,
            -315, -315, -315, -315, -315, -315, -315, -315),
-      'B':( 339, 350, 350, 350, 350, 350, 350, 350,
-            339, 350, 350, 350, 350, 350, 350, 350,
-            339, 350, 350, 350, 350, 350, 350, 350,
-            339, 350, 350, 350, 350, 350, 350, 350,
-            339, 350, 350, 350, 350, 350, 350, 350,
-            339, 350, 350, 350, 350, 350, 350, 350,
-            339, 350, 350, 350, 350, 350, 350, 350,
-            339, 350, 350, 350, 350, 350, 350, 350),
-      'b':(-350, -350, -350, -350, -350, -350, -350, -339,
-           -350, -350, -350, -350, -350, -350, -350, -339,
-           -350, -350, -350, -350, -350, -350, -350, -339,
-           -350, -350, -350, -350, -350, -350, -350, -339,
-           -350, -350, -350, -350, -350, -350, -350, -339,
-           -350, -350, -350, -350, -350, -350, -350, -339,
-           -350, -350, -350, -350, -350, -350, -350, -339,
-           -350, -350, -350, -350, -350, -350, -350, -339),
+      'B':tuple(([339]+[350]*7)*8),
+      'b':tuple(([-350]*7+[-339])*8),
       'Q':tuple([900]*64),
       'q':tuple([-900]*64),
-      'K':( 24,  24,  12,  6,  6,  12,  24,  24, 
-            24,  12,  6,   0,  0,  6,   12,  24, 
-            12,  6,   0,  -6, -6,  0,   6,  12, 
-             6,   0,  -6, -12, -12, -6,  0,  6, 
-             6,   0,  -6, -12, -12, -6,  0,  6, 
-            12,  6,   0,  -6, -6,  0,   6,  12, 
-            24,  12,  6,   0,  0,  6,   12,  24, 
-            24,  24,  12,  6,  6,  12,  24,  24),
-      'k':( -24, -18, -12, -6, -6, -12, -24, -24, 
-            -24, -12, -6,  -0, -0, -6,  -12, -24, 
-            -12, -6,  -0,   6,  6, -0,  -6,  -12, 
-             -6,  -0,   6,  12,  12,  6, -0,  -6, 
-             -6,  -0,   6,  12,  12,  6, -0,  -6, 
-            -12, -6,  -0,   6,  6, -0,  -6,  -12, 
-            -24, -12, -6,  -0, -0, -6,  -12, -24, 
-            -24, -24, -12, -6, -6, -12, -24, -24)}
+      'K':k1val,
+      'k':k2val}
 
 def eval_material(board):
     return sum([pval[p][i] for i,p in enumerate(board) if p!='.'])
@@ -407,6 +380,42 @@ class Game:
 
         return sorted([m for m in self.moves() if legal(self,m)], key=lambda x: x['val'], reverse=self.turn()==WHITE)
 
+    def make_move(self, m):
+        self.ttable={} #transposition table
+        self.ktable=[collections.Counter() for i in range(self.MAX_DEPTH)]
+        key="".join(self.board),self.turn()
+        if 'kill' in m or self.board[m['from']].upper()=='P':
+            self.rep={("".join(self.board),self.turn()): 0} #ireversible move - clear rep table
+        else:
+            self.rep={key:self.rep[key] for key in self.rep if self.rep[key]>0} #py map remebers old keys
+
+        self.update(m)
+        key="".join(self.board),self.turn()
+        self.rep.setdefault(key,0)
+        self.rep[key]+=1
+
+        #adjust king value in end game
+        if abs_eval_material(self.board) < 0.3*abs_eval_material('RP....prNP....pnBP....pbKP....pkQP....pqBP....pbNP....pnRP....pr'):
+            if pval['K']==k1val:
+                pval['K']=k2val
+                pval['k']=k1val
+
+        #update castling permissions
+        colour=p2colour[self.board[m['to']]]
+        if 'castle' in m or self.board[m['to']].lower()=='k':
+            self.can_castle[-1][colour]={'long': False, 'short':False}
+        else:
+            if self.can_castle[-1][colour]['long'] and self.board[m['to']].lower()=='r' and m['from']//8==7:
+                self.can_castle[-1][colour]['long']=False
+            if self.can_castle[-1][colour]['short'] and self.board[m['to']].lower()=='r' and m['from']//8==0:
+                self.can_castle[-1][colour]['short']=False
+
+    def check_50_move_rule(self):
+        if sum(self.rep.values())>=100:
+            for key in self.rep:
+                print(key, self.rep[key])
+        return sum(self.rep.values())>=100
+            
     def update(self, d):
         self.log+=[d]
         if 'castle' in d:
@@ -488,11 +497,6 @@ class Game:
 
     def score_moves(self,moves,depth=1,max_searched=100000):
        t0=time.time()
-       self.ttable={} #transposition table
-       self.ktable=[collections.Counter() for i in range(self.MAX_DEPTH)]
-       self.rep={key:self.rep[key] for key in self.rep if self.rep[key]>0}
-       key="".join(self.board),self.turn()
-       self.rep.setdefault(key,0)
        if moves==None:
            #moves=game.legal_moves()
            moves=self.labeled_moves()
@@ -586,10 +590,14 @@ def pvs(game, depth, ply, alpha, beta):
     d=game.retrieve(key)
     if d!=None:
         if d['depth']>=depth:
-            if d['bound']=='EXACT': return d['score']
+            if d['bound']=='EXACT': 
+                game.rep[key]-=1
+                return d['score']
             if d['bound']=='LOWER': alpha=max(alpha,d['score'])
             elif d['bound']=='UPPER': beta=min(beta,d['score'])
-            if alpha>=beta: return d['score']
+            if alpha>=beta: 
+                game.rep[key]-=1
+                return d['score']
 
     if depth<=0: 
         game.rep[key]-=1
@@ -645,6 +653,9 @@ def autoplay(verbose=False):
         if game.rep["".join(game.board),game.turn()]>=3:
             print("1/2-1/2 Draw by repetition")
             break
+        if game.check_50_move_rule():
+            print("1/2-1/2 Draw by the 50-move rule")
+            break
         moves=game.score_moves(moves,25,100000)
         tot+=game.n_searched
 
@@ -656,7 +667,7 @@ def autoplay(verbose=False):
         s=f"{len(game.log)//2+1}. "
         m=moves[0]
         s+=f"{m['label']}" if 'label' in m else f"{m2str(moves[0])}"
-        game.update(m)
+        game.make_move(m)
         game.display()
         moves2=game.labeled_moves()
         if game.in_check():
