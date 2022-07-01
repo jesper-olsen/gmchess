@@ -7,13 +7,13 @@
 #
 #  TODO - replace ttable, ktable, rep with more efficient maps
 #       - add mobility to scoring
-#       - check 50 move rule
 
 import sys
 import time
 import collections
 import locale
 import functools
+import random
 
 pieces="RNBKQP"
 WHITE=1
@@ -36,12 +36,6 @@ p2colour={p:WHITE for p in pieces} | {p.lower():BLACK for p in pieces} | {'.':2}
 #  +8    -8                +1,0         -1,0
 #  +7 -1 -9                +1,-1  0,-1  -1,-1
 #
-#    +10 x -6               +1,+2  x  -1,+2
-# +17  x x  x -15        +2,+1     x        -2,+1
-#      x X  x                      X        
-# +15  x x  x -17        +2,-1     x        -2,-1
-#     +6 x  -10              +1,-2 x  -1,-2
-
 
 #positional piece values
 k1val=( 24,  24,  12,  6,  6,  12,  24,  24, 
@@ -63,22 +57,17 @@ nval=( 315, 315, 315, 315, 315, 315, 315, 315,
        315, 320, 320, 320, 320, 320, 320, 315,
        315, 315, 315, 315, 315, 315, 315, 315)
 
-pval={'P':( 100, 100, 101, 102, 104, 106, 108, 900,
-            100, 100, 102, 104, 106, 109, 112, 900,
-            100, 100, 104, 108, 112, 115, 118, 900,
-            100, 100, 107, 114, 121, 128, 135, 900,
-            100, 100, 106, 112, 118, 124, 132, 900,
-            100, 100, 104, 108, 112, 116, 120, 900,
-            100, 100, 102, 104, 106, 108, 112, 900,
-            100, 100, 101, 102, 104, 106, 108, 900),
-      'p':(-900, -108, -106, -104, -102, -101, -100, -100,
-           -900, -112, -109, -106, -103, -102, -100, -100,
-           -900, -118, -115, -112, -109, -104, -100, -100,
-           -900, -135, -128, -121, -114, -107, -100, -100,
-           -900, -132, -124, -118, -112, -106, -100, -100,
-           -900, -120, -116, -112, -108, -104, -100, -100,
-           -900, -112, -108, -106, -104, -102, -100, -100,
-           -900, -108, -106, -104, -102, -101, -100, -100),
+pawnval=( 100, 100, 101, 102, 104, 106, 108, 900,
+          100, 100, 102, 104, 106, 109, 112, 900,
+          100, 100, 104, 108, 112, 115, 118, 900,
+          100, 100, 107, 114, 121, 128, 135, 900,
+          100, 100, 106, 112, 118, 124, 132, 900,
+          100, 100, 104, 108, 112, 116, 120, 900,
+          100, 100, 102, 104, 106, 108, 112, 900,
+          100, 100, 101, 102, 104, 106, 108, 900)
+
+pval={'P':pawnval,
+      'p':tuple([-x for x in pawnval[::-1]]),
       'R':tuple(([500]*6+[522,500])*8),
       'r':tuple(([-500,-522]+[-500]*6)*8),
       'N':nval,
@@ -554,7 +543,7 @@ def reply_fab(game, depth, ply, alpha, beta):
     #moves=game.legal_moves()
     moves=game.moves()
     moves=[m for m in moves if 'kill' in m] #captures
-    moves=[m for m in moves if m['to']==lt] #replies
+    #moves=[m for m in moves if m['to']==lt] #replies
     if moves==[]: return game.eval()
 
     best=-INFINITE+ply
@@ -679,23 +668,25 @@ def autoplay(verbose=False):
             print(s) if game.in_check() else print("1/2-1/2 Draw")
             break
 
-        s=f"{len(game.log)//2+1}. "
+        #m=random.choice( [m for m in moves if m['score']==moves[0]['score']] ) #same score
         m=moves[0]
+
+        s=f"{len(game.log)//2+1}. "
         s+=f"{m['label']}" if 'label' in m else f"{m2str(moves[0])}"
         game.make_move(m)
         game.display()
-        moves2=game.labeled_moves()
+        moves=game.labeled_moves()
         if game.in_check():
-            if moves2==[]:
+            if moves==[]:
                 s+="#"
             else:
                 s+="+"
         if verbose: s+=f" ; Value: {m['score']}, Searched {game.n_searched:n}; {tot/(time.time()-t0):n} positions/sec; depth: {m['depth']}"
         print(s)
-        moves=moves2
-    print("Time:",time.time()-t0)
+    print(f"Time: {time.time()-t0}, Search total: {tot:n}")
 
 if __name__=="__main__":
     locale.setlocale(locale.LC_ALL, '')
+    random.seed()
 
     autoplay(verbose=True)
