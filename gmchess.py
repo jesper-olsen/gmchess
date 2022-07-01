@@ -13,12 +13,35 @@ import sys
 import time
 import collections
 import locale
+import functools
 
 pieces="RNBKQP"
 WHITE=1
 BLACK=0
 INFINITE=10000
 p2colour={p:WHITE for p in pieces} | {p.lower():BLACK for p in pieces} | {'.':2}
+
+# board layout - h1 is 0, a8 is 63
+# 63  55  47  39  31  23  15   7
+# 62  54  46  38  30  22  14   6
+# 61  53  45  37  29  21  13   5
+# 60  52  44  36  28  20  12   4
+# 59  51  43  35  27  19  11   3
+# 58  50  42  34  26  18  10   2
+# 57  49  41  33  25  17   9   1
+# 56  48  40  32  24  16   8   0
+
+#
+#  +9 +1 -7                +1,+1  0,+1  -1,+1          
+#  +8    -8                +1,0         -1,0
+#  +7 -1 -9                +1,-1  0,-1  -1,-1
+#
+#    +10 x -6               +1,+2  x  -1,+2
+# +17  x x  x -15        +2,+1     x        -2,+1
+#      x X  x                      X        
+# +15  x x  x -17        +2,-1     x        -2,-1
+#     +6 x  -10              +1,-2 x  -1,-2
+
 
 #positional piece values
 k1val=( 24,  24,  12,  6,  6,  12,  24,  24, 
@@ -31,6 +54,14 @@ k1val=( 24,  24,  12,  6,  6,  12,  24,  24,
         24,  24,  12,  6,  6,  12,  24,  24)
 k2val=tuple(-x for x in k1val)
 
+nval=( 315, 315, 315, 315, 315, 315, 315, 315,
+       315, 320, 320, 320, 320, 320, 320, 315,
+       315, 320, 325, 325, 330, 330, 320, 315,
+       315, 320, 325, 325, 330, 330, 320, 315,
+       315, 320, 325, 325, 330, 330, 320, 315,
+       315, 320, 325, 325, 330, 330, 320, 315,
+       315, 320, 320, 320, 320, 320, 320, 315,
+       315, 315, 315, 315, 315, 315, 315, 315)
 
 pval={'P':( 100, 100, 101, 102, 104, 106, 108, 900,
             100, 100, 102, 104, 106, 109, 112, 900,
@@ -50,22 +81,8 @@ pval={'P':( 100, 100, 101, 102, 104, 106, 108, 900,
            -900, -108, -106, -104, -102, -101, -100, -100),
       'R':tuple(([500]*6+[522,500])*8),
       'r':tuple(([-500,-522]+[-500]*6)*8),
-      'N':( 315, 315, 315, 315, 315, 315, 315, 315,
-            315, 320, 320, 320, 320, 320, 320, 315,
-            315, 320, 325, 325, 330, 330, 320, 315,
-            315, 320, 325, 325, 330, 330, 320, 315,
-            315, 320, 325, 325, 330, 330, 320, 315,
-            315, 320, 325, 325, 330, 330, 320, 315,
-            315, 320, 320, 320, 320, 320, 320, 315,
-            315, 315, 315, 315, 315, 315, 315, 315),
-      'n':(-315, -315, -315, -315, -315, -315, -315, -315,
-           -315, -320, -320, -320, -320, -320, -320, -315,
-           -315, -320, -330, -330, -325, -325, -320, -315,
-           -315, -320, -330, -330, -325, -325, -320, -315,
-           -315, -320, -330, -330, -325, -325, -320, -315,
-           -315, -320, -330, -330, -325, -325, -320, -315,
-           -315, -320, -320, -320, -320, -320, -320, -315,
-           -315, -315, -315, -315, -315, -315, -315, -315),
+      'N':nval,
+      'n':tuple([-x for x in nval[::-1]]),
       'B':tuple(([339]+[350]*7)*8),
       'b':tuple(([-350]*7+[-339])*8),
       'Q':tuple([900]*64),
@@ -123,7 +140,6 @@ def score_pawn_structure(board):
     passed=sum([-2*(7-q%8)*(7-q%8) for q in [i for i,c in enumerate(board) if c=='p'] if freep(q)])  
     yield passed
 
-
 def i2str(i):
     """Translate integer coordinates to chess square"""
     x=7-i//8
@@ -132,29 +148,6 @@ def i2str(i):
 
 def m2str(d): 
     return f"{i2str(d['from'])}{'x' if 'kill' in d else ' '}{i2str(d['to'])}"
-
-
-
-# h1 is 0, a8 is 63
-# 63  55  47  39  31  23  15   7
-# 62  54  46  38  30  22  14   6
-# 61  53  45  37  29  21  13   5
-# 60  52  44  36  28  20  12   4
-# 59  51  43  35  27  19  11   3
-# 58  50  42  34  26  18  10   2
-# 57  49  41  33  25  17   9   1
-# 56  48  40  32  24  16   8   0
-
-#
-#  +9 +1 -7                +1,+1  0,+1  -1,+1          
-#  +8    -8                +1,0         -1,0
-#  +7 -1 -9                +1,-1  0,-1  -1,-1
-#
-#    +10 x -6               +1,+2  x  -1,+2
-# +17  x x  x -15        +2,+1     x        -2,+1
-#      x X  x                      X        
-# +15  x x  x -17        +2,-1     x        -2,-1
-#     +6 x  -10              +1,-2 x  -1,-2
 
 
 #Build a 'ray-map' - squares that rook,bishop,queen can glide to on an empty board
@@ -298,7 +291,7 @@ def pawn_moves(game, frm):
 rrays=['n','s','e','w']
 brays=['ne','nw','se','sw']
 
-import functools
+#map - piece type to function that generate its moves
 p2moves={'r': functools.partial(ray_moves,rrays),
          'n': functools.partial(knight_moves),
          'b': functools.partial(ray_moves,brays),
@@ -306,7 +299,6 @@ p2moves={'r': functools.partial(ray_moves,rrays),
          'q': functools.partial(ray_moves,rrays+brays),
          'p': functools.partial(pawn_moves)
          }
-
 
 class Game:
     def __init__(self):
@@ -328,6 +320,7 @@ class Game:
         self.ktable=[collections.Counter() for i in range(self.MAX_DEPTH)]
         self.n_searched=0
         self.max_searched=100000
+        self.END_GAME_MATERIAL=0.3*abs_eval_material('RP....prNP....pnBP....pbKP....pkQP....pqBP....pbNP....pnRP....pr')
 
     def turn(self):
         return (len(self.log)+1)%2 
@@ -364,7 +357,6 @@ class Game:
             m['label']=s
         return moves
             
-
     def moves(self, colour=None):
         if colour==None: colour=(len(self.log)+1)%2
         for i,p in ((i,p) for (i,p) in enumerate(self.board) if p2colour[p]==colour):
@@ -381,8 +373,12 @@ class Game:
         return sorted([m for m in self.moves() if legal(self,m)], key=lambda x: x['val'], reverse=self.turn()==WHITE)
 
     def make_move(self, m):
-        self.ttable={} #transposition table
-        self.ktable=[collections.Counter() for i in range(self.MAX_DEPTH)]
+        # shift killer moves 1 level up
+        #self.ktable=[collections.Counter() for i in range(self.MAX_DEPTH)]
+        for i in range(self.MAX_DEPTH-1):
+            self.ktable[i]=collections.Counter({k:2-j for j,(k,v) in enumerate(self.ktable[i+1].most_common(2))})
+        self.ktable[self.MAX_DEPTH-1]=collections.Counter()
+
         key="".join(self.board),self.turn()
         if 'kill' in m or self.board[m['from']].upper()=='P':
             self.rep={("".join(self.board),self.turn()): 0} #ireversible move - clear rep table
@@ -390,12 +386,20 @@ class Game:
             self.rep={key:self.rep[key] for key in self.rep if self.rep[key]>0} #py map remebers old keys
 
         self.update(m)
+
         key="".join(self.board),self.turn()
         self.rep.setdefault(key,0)
         self.rep[key]+=1
 
+        #clear transposition table
+        if key in self.ttable:
+            self.ttable={key: self.ttable[key]}
+        else:
+            self.ttable={}
+
+
         #adjust king value in end game
-        if abs_eval_material(self.board) < 0.3*abs_eval_material('RP....prNP....pnBP....pbKP....pkQP....pqBP....pbNP....pnRP....pr'):
+        if abs_eval_material(self.board) < self.END_GAME_MATERIAL:
             if pval['K']==k1val:
                 pval['K']=k2val
                 pval['k']=k1val
@@ -498,9 +502,21 @@ class Game:
     def score_moves(self,moves,depth=1,max_searched=100000):
        t0=time.time()
        if moves==None:
-           #moves=game.legal_moves()
            moves=self.labeled_moves()
        if moves==[]: return []
+
+       # lookup best move from ttable - move to head
+       key="".join(self.board),self.turn()
+       d=self.retrieve(key)
+       if d!=None:
+           def find(q, moves):
+               for i,m in enumerate(moves):
+                   if q['from']==m['from'] and q['to']==m['to']:
+                       return i
+               return -1
+           i=find(d['move'],moves)
+           if i>0: moves=[moves.pop(i)] + moves
+
        self.n_searched=0
        for depth in range(1, depth+1):
            if depth>1 and self.n_searched>max_searched: break
@@ -537,8 +553,8 @@ def reply_fab(game, depth, ply, alpha, beta):
     lt=game.log[-1]['to'] 
     #moves=game.legal_moves()
     moves=game.moves()
-    moves=[m for m in moves if 'kill' in m]
-    moves=[m for m in moves if m['to']==lt]
+    moves=[m for m in moves if 'kill' in m] #captures
+    moves=[m for m in moves if m['to']==lt] #replies
     if moves==[]: return game.eval()
 
     best=-INFINITE+ply
@@ -608,8 +624,7 @@ def pvs(game, depth, ply, alpha, beta):
     #moves=game.legal_moves()
     moves=list(game.moves())
 
-    # move killer moves to head of list
-    for i in [i for (k,v) in game.ktable[depth].most_common(1) for (i,m) in enumerate(moves) if i!=0 and (m['from'],m['to'])==k][::-1]:
+    for i in [i for (k,v) in game.ktable[depth].most_common(2) for (i,m) in enumerate(moves) if i!=0 and (m['from'],m['to'])==k][::-1]:
         #print(f"Killer {i}->0")
         moves=[moves.pop(i)] + moves
     if d!=None:
@@ -683,4 +698,4 @@ def autoplay(verbose=False):
 if __name__=="__main__":
     locale.setlocale(locale.LC_ALL, '')
 
-    autoplay()
+    autoplay(verbose=True)
