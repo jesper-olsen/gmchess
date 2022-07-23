@@ -237,7 +237,7 @@ def pawn_moves(game, frm):
     if p2colour[board[frm]]==WHITE:
         if y<7 and board[frm+1]=='.': 
             if y==6:
-                yield {'from':frm, 'to':frm+1, 'val':pval['P'][frm+1]-pval['P'][frm], 'transform':('P','Q')}
+                yield {'from':frm, 'to':frm+1, 'val':pval['Q'][frm+1]-pval['P'][frm], 'transform':('P','Q')}
             else:
                 yield {'from':frm, 'to':frm+1, 'val':pval['P'][frm+1]-pval['P'][frm]}
         if y==1 and board[frm+1]=='.' and board[frm+2]=='.': 
@@ -259,7 +259,7 @@ def pawn_moves(game, frm):
     else:
         if y>0 and board[frm-1]=='.': #1 forward
             if y==1:
-                yield {'from':frm, 'to': frm-1, 'val':pval['p'][frm-1]-pval['p'][frm], 'transform':('p','q')}  
+                yield {'from':frm, 'to': frm-1, 'val':pval['Q'][frm-1]-pval['p'][frm], 'transform':('p','q')}  
             else:
                 yield {'from':frm, 'to': frm-1, 'val':pval['p'][frm-1]-pval['p'][frm]}  
         if y==6 and board[frm-1]=='.' and board[frm-2]=='.': #2 forward
