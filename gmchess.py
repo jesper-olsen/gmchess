@@ -231,10 +231,18 @@ def knight_moves(game, frm):
 def pawn_moves(game, frm):
     board=game.board
     log=game.log
-    last_move=None if log==[] else (board[log[-1]['to']],log[-1]['from'],log[-1]['to'])
+    last_move=None if log==[] else log[-1]
     x=frm//8 #col
     y=frm%8  #row
     if p2colour[board[frm]]==WHITE:
+        if last_move!=None \
+           and board[last_move['to']]=='p' \
+           and last_move['to']==last_move['from']-2: # en passant
+            if frm+8==last_move['from']:
+                yield {'from':frm, 'to':frm+9, 'kill':('p',last_move['to']),'val':pval['P'][frm+9]-pval['P'][frm]-pval['p'][last_move['to']]}
+            elif frm-8==last_move['to']:
+                yield {'from':frm, 'to':frm-7, 'kill':('p',last_move['to']),'val':pval['P'][frm+9]-pval['P'][frm]-pval['p'][last_move['to']]}
+            
         if y<7 and board[frm+1]=='.': 
             if y==6:
                 yield {'from':frm, 'to':frm+1, 'val':pval['Q'][frm+1]-pval['P'][frm], 'transform':('P','Q')}
@@ -246,17 +254,19 @@ def pawn_moves(game, frm):
             if p2colour[board[frm+9]]==BLACK: #capture
                 yield {'from':frm, 'to':frm+9, 'kill':(board[frm+9],frm+9), 
                        'val':pval['P'][frm+9]-pval['P'][frm]-pval[board[frm+9]][frm+9]}
-            elif (y==4 and board[frm+9]=='.' and last_move==('p',frm+8,frm+10)): #en passant capture
-                yield {'from':frm, 'to':frm+9, 'kill':('p',frm+10),
-                       'val':pval['P'][frm+9]-pval['P'][frm]-pval['p'][frm+10]}
         if x>0 and y<7:
             if p2colour[board[frm-7]]==BLACK: #capture
                 yield {'from':frm, 'to':frm-7, 'kill':(board[frm-7],frm-7), 
                        'val':pval['P'][frm-7]-pval['P'][frm]-pval[board[frm-7]][frm-7]}
-            elif (y==4 and board[frm-7]=='.' and last_move==('p',frm-6,frm-8)): #en passant capture
-                yield {'from':frm, 'to':frm-7, 'kill':('p',frm-8), 
-                       'val':pval['P'][frm-7]-pval['P'][frm]-pval['p'][frm-8]}
-    else:
+    else: # BLACK
+        if last_move!=None \
+          and board[last_move['to']]=='p' \
+          and last_move['to']==last_move['from']+2: # en passant
+            if frm-8==last_move['from']:
+                yield {'from':frm, 'to':frm-9, 'kill':('P',last_move['to']),'val':pval['p'][frm-9]-pval['p'][frm]-pval['P'][last_move['to']]}
+            elif frm+8==last_move['to']:
+                yield {'from':frm, 'to':frm+7, 'kill':('P',last_move['to']),'val':pval['p'][frm+7]-pval['p'][frm]-pval['P'][last_move['to']]}
+
         if y>0 and board[frm-1]=='.': #1 forward
             if y==1:
                 yield {'from':frm, 'to': frm-1, 'val':pval['Q'][frm-1]-pval['p'][frm], 'transform':('p','q')}  
@@ -267,15 +277,9 @@ def pawn_moves(game, frm):
         if x<7 and y>0:
             if p2colour[board[frm+7]]==WHITE: #capture
                 yield {'from': frm, 'to': frm+7, 'kill':(board[frm+7],frm+7), 'val':pval['p'][frm+7]-pval['p'][frm]-pval[board[frm+7]][frm+7]}
-            elif (y==3 and board[frm+6]=='.' and last_move==('P',frm+6,frm+8)):  #en passant capture
-                yield {'from':frm, 'to': frm+7, 'kill':('P',frm+8),
-                       'val':pval['p'][frm+7]-pval['p'][frm]-pval['P'][frm+8]}
         if x>0 and y>0:
             if p2colour[board[frm-9]]==WHITE: #capture
                 yield {'from':frm, 'to': frm-9, 'kill':(board[frm-9],frm-9), 'val':pval['p'][frm-9]-pval['p'][frm]-pval[board[frm-9]][frm-9]}
-            elif (y==3 and board[frm-9]=='.' and last_move==('P',frm-10,frm-8)): #en passant capture
-                yield {'from': frm, 'to': frm-9, 'kill':('P',frm-8),
-                       'val':pval['p'][frm-9]-pval['p'][frm]-pval['P'][frm-8]}
     
 rrays=['n','s','e','w']
 brays=['ne','nw','se','sw']
